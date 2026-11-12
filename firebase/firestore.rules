@@ -1,0 +1,160 @@
+rules_version = '2';
+
+// =============================================================================
+// SEO Skills Intelligence — Firestore security rules (the "backend").
+//
+// Publish these in Firebase console > Firestore Database > Rules, or run
+//   firebase deploy --only firestore:rules
+//
+// Who is who:
+//   Administrator  = a document exists at admins/{uid}. Create the first one by
+//                    hand in the Firebase console (see docs/SETUP_GUIDE.md).
+//   Participant    = a signed-in user with a profile at users/{uid}.
+//
+// What these rules guarantee:
+//   - Participants can only read and write their OWN profile, attempts,
+//     answers and progress. They can never read anyone else's results,
+//     the people list, invites, reports or other admin data.
+//   - Only administrators can change questions, answer keys, mocks,
+//     settings, invites or other people's data.
+//   - Answer keys (keys/{questionId}) are readable only after the participant
+//     has committed an answer to that question (users/{uid}/state/revealed
+//     is append-only), so answers are never sent to the browser during a test.
+//   - In invite-only mode, only invited (and email-verified) addresses can
+//     create a profile; without a profile nothing else is readable.
+// =============================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() { return request.auth != null; }
+    function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
+    function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    function myProfilePath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function active() {
+      return signedIn() && exists(myProfilePath()) && get(myProfilePath()).data.get('disabled', false) != true;
+    }
+    function myEmail() { return string(request.auth.token.get('email', '')).lower(); }
+    function emailVerified() { return request.auth.token.get('email_verified', false) == true; }
+    function regOpen() {
+      return !exists(/databases/$(database)/documents/config/app)
+        || get(/databases/$(database)/documents/config/app).data.get('registration', 'open') != 'invite';
+    }
+    function invited() {
+      return signedIn() && myEmail() != '' && emailVerified()
+        && exists(/databases/$(database)/documents/invites/$(myEmail()));
+    }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
+    // ---------- public site settings (registration mode, site name, scoring) ----------
+    match /config/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ---------- administrators ----------
+    // The first admin is created by hand in the Firebase console.
+    // Admins can then grant or remove admin access for other people (not themselves).
+    match /admins/{uid} {
+      allow get: if isSelf(uid) || isAdmin();
+      allow list: if isAdmin();
+      allow write: if isAdmin() && request.auth.uid != uid;
+    }
+
+    // ---------- invitations (document id = lower-case email) ----------
+    match /invites/{inviteEmail} {
+      allow get: if isAdmin() || (signedIn() && myEmail() == inviteEmail);
+      allow list: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (signedIn() && myEmail() == inviteEmail
+            && changed().hasOnly(['status', 'joinedAt', 'uid'])
+            && request.resource.data.status == 'joined'
+            && request.resource.data.uid == request.auth.uid);
+    }
+
+    // ---------- people ----------
+    match /users/{uid} {
+      allow get: if isSelf(uid) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isSelf(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.get('disabled', false) == false
+        && (isAdmin() || regOpen() || invited());
+      allow update: if isAdmin()
+        || (isSelf(uid) && active() && !changed().hasAny(['uid', 'disabled', 'email', 'joinedAt', 'createdAt']));
+      allow delete: if isAdmin();
+
+      match /attempts/{id} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow write: if isAdmin() || (isSelf(uid) && active());
+      }
+      match /answers/{id} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow write: if isAdmin() || (isSelf(uid) && active());
+      }
+      match /assignments/{id} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow create, delete: if isAdmin();
+        allow update: if isAdmin() || (isSelf(uid) && active() && changed().hasOnly(['status', 'doneAt']));
+      }
+      // seen, learning (and revealed, below)
+      match /state/{id} {
+        allow read: if isSelf(uid) || isAdmin();
+        allow write: if isAdmin() || (isSelf(uid) && active() && id != 'revealed');
+      }
+      // Append-only list of question ids whose answer keys this person may read.
+      match /state/revealed {
+        allow create: if isSelf(uid) && active() && request.resource.data.ids is list;
+        allow update: if isSelf(uid) && active() && request.resource.data.ids is list
+          && request.resource.data.ids.hasAll(resource.data.ids);
+      }
+    }
+
+    // ---------- question bank (public part, no answers) ----------
+    match /bank/{cat} {
+      allow read: if active() || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ---------- answer keys ----------
+    match /keys/{qid} {
+      allow get: if isAdmin()
+        || (active() && qid in get(/databases/$(database)/documents/users/$(request.auth.uid)/state/revealed).data.ids);
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ---------- shared content ----------
+    match /templates/{id} {
+      allow read: if active() || isAdmin();
+      allow write: if isAdmin();
+    }
+    match /trends/{id} {
+      allow read: if active() || isAdmin();
+      allow write: if isAdmin();
+    }
+    match /mocks/{id} {
+      allow read: if isAdmin() || (active() && resource.data.published == true);
+      allow write: if isAdmin();
+    }
+
+    // ---------- leaderboard (names, teams and scores only; no emails) ----------
+    match /leaderboard/{uid} {
+      allow read: if active() || isAdmin();
+      allow create, update: if isAdmin()
+        || (isSelf(uid) && active()
+            && request.resource.data.uid == uid
+            && request.resource.data.name is string
+            && request.resource.data.name.size() <= 80);
+      allow delete: if isSelf(uid) || isAdmin();
+    }
+
+    // ---------- question reports and open-answer reviews ----------
+    match /inbox/{uid} {
+      allow get: if isSelf(uid) || isAdmin();
+      allow list: if isAdmin();
+      allow write: if isAdmin() || (isSelf(uid) && active());
+    }
+  }
+}
