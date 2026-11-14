@@ -25,6 +25,34 @@ Team overview, competency heatmap, people (disable access, grant admin), **Invit
 
 Participants never see the admin console. The Firestore security rules in `firebase/firestore.rules` block every admin read and write on the server, not just in the interface.
 
+## Participant screenshots
+
+| Dashboard | Assessment options |
+|---|---|
+| <img src="docs/screenshots/user-dashboard.png" alt="Participant dashboard" width="480"> | <img src="docs/screenshots/user-assessment-options.png" alt="Assessment options" width="480"> |
+
+| Mock test series | Certificates |
+|---|---|
+| <img src="docs/screenshots/user-mock-test-series.png" alt="Mock test series" width="480"> | <img src="docs/screenshots/user-certificates.png" alt="Earned certificates" width="480"> |
+
+**Certificate example**
+
+<img src="docs/screenshots/user-certificate-example.png" alt="Printable certificate of achievement" width="760">
+
+## Admin screenshots
+
+| Team overview | Competency heatmap |
+|---|---|
+| <img src="docs/screenshots/admin-team-overview.png" alt="Admin team overview" width="480"> | <img src="docs/screenshots/admin-competency-heatmap.png" alt="Admin competency heatmap" width="480"> |
+
+| Team knowledge gaps | Invites and access |
+|---|---|
+| <img src="docs/screenshots/admin-team-knowledge-gaps.png" alt="Admin team knowledge gaps" width="480"> | <img src="docs/screenshots/admin-invites-access.png" alt="Admin invites and access" width="480"> |
+
+**Settings and rules**
+
+<img src="docs/screenshots/admin-settings-rules.png" alt="Admin settings and rules" width="760">
+
 ## How it fits together
 
 ```
@@ -73,7 +101,8 @@ seo-test-series/
 │   ├── SETUP_GUIDE.md         Step-by-step deployment
 │   ├── ADMIN_GUIDE.md         Running the test series day to day
 │   ├── SECURITY.md            What is protected, and how
-│   └── images/                Local-only screenshots; excluded from Git
+│   ├── images/                Local-only screenshots; excluded from Git
+│   └── screenshots/           Screenshots shown in this README
 ├── firebase.json / .firebaserc  Optional: deploy rules with the Firebase CLI
 ├── .gitignore                 Keeps the private question bank out of Git
 └── .nojekyll                  Tells GitHub Pages to serve files as-is
@@ -88,3 +117,7 @@ Firebase's free Spark plan covers a small-to-medium test series (50,000 document
 ## Credits
 
 Built for the SEO test series. Question content cites official documentation (Google Search Central, web.dev, Schema.org, Google Analytics Help and vendor docs).
+
+## About Me
+
+Created by [Ankush Raj](https://github.com/AnkushRajMaheYam/) · [LinkedIn](https://www.linkedin.com/in/ankushrajmaheyam/).
